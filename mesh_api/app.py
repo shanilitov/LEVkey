@@ -32,7 +32,7 @@ def decrypt_message(encrypted_message):
 def connect():
     global interface
     try:
-        interface = SerialInterface(devPath="COM25")
+        interface = SerialInterface(devPath="COM26")  # לשנות לפי השם של החיבור הטורי המקומי...
         return jsonify({"status": "connected"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
