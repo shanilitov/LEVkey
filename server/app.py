@@ -1,113 +1,70 @@
 from flask import Flask, request, jsonify
 import serial
-import threading
-import time
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-import os
 import meshtastic
 from meshtastic.serial_interface import SerialInterface
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+import base64
 
 app = Flask(__name__)
-serial_port = None
-meshtastic_interface = None
-received_messages = []
-locations = []
-running = False
+interface = None
 
-# המפתח להצפנה והפענוח
-encryption_key = b'sixteen byte key'  # יש להחליף במפתח אמיתי באורך 16 בייטים
-
-def encrypt_message(message, key):
-    iv = os.urandom(16)
-    cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+def encrypt_message(key, plaintext):
+    cipher = Cipher(algorithms.AES(key), modes.CFB(b'16byteIV1234567'), backend=default_backend())
     encryptor = cipher.encryptor()
-    encrypted_message = encryptor.update(message.encode('utf-8')) + encryptor.finalize()
-    return iv + encrypted_message
+    ciphertext = encryptor.update(plaintext.encode()) + encryptor.finalize()
+    return base64.b64encode(ciphertext).decode()
 
-def decrypt_message(encrypted_message, key):
-    iv = encrypted_message[:16]
-    cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+def decrypt_message(key, ciphertext):
+    cipher = Cipher(algorithms.AES(key), modes.CFB(b'16byteIV1234567'), backend=default_backend())
     decryptor = cipher.decryptor()
-    decrypted_message = decryptor.update(encrypted_message[16:]) + decryptor.finalize()
-    return decrypted_message.decode('utf-8')
-
-def on_receive(packet, interface):
-    global received_messages, locations
-    try:
-        message = packet.get('payload').decode('utf-8')
-        message = decrypt_message(message, encryption_key)
-        print(f"Received message: {message}")
-        if message.startswith("LOC:"):
-            _, lat, lon = message.split(",")
-            locations.append({"latitude": float(lat), "longitude": float(lon)})
-        else:
-            received_messages.append(message)
-    except Exception as e:
-        print(f"Receive error: {str(e)}")
-
-def connect():
-    global meshtastic_interface, running
-    try:
-        print("Attempting to open Meshtastic interface...")
-        meshtastic_interface = SerialInterface('COM25')  # השתמש ב-COM port הנכון
-        meshtastic_interface.onReceive = on_receive
-        print("Meshtastic interface opened.")
-        running = True
-    except Exception as e:
-        print(f"Connection error: {str(e)}")
-        raise e
-
-def disconnect():
-    global meshtastic_interface, running
-    try:
-        if meshtastic_interface:
-            running = False
-            meshtastic_interface.close()
-            meshtastic_interface = None
-            print("Meshtastic interface closed.")
-    except Exception as e:
-        print(f"Disconnection error: {str(e)}")
-        raise e
+    plaintext = decryptor.update(base64.b64decode(ciphertext)) + decryptor.finalize()
+    return plaintext.decode()
 
 @app.route('/connect', methods=['POST'])
-def api_connect():
+def connect():
+    global interface
     try:
-        connect()
-        return jsonify({"status": "connected"}), 200
+        interface = SerialInterface('COM25')  # עדכן את השם של ה-serial port לפי המערכת שלך
+        return jsonify({'status': 'connected'})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/disconnect', methods=['POST'])
-def api_disconnect():
-    try:
-        disconnect()
-        return jsonify({"status": "disconnected"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+def disconnect():
+    global interface
+    if interface:
+        interface.close()
+        interface = None
+        return jsonify({'status': 'disconnected'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Not connected'}), 500
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    if not meshtastic_interface:
-        return jsonify({"status": "error", "message": "Not connected"}), 400
+    global interface
+    if not interface:
+        return jsonify({'status': 'error', 'message': 'Not connected'}), 500
+
+    data = request.json
+    key = b'sixteen byte key'  # עדכן את המפתח לפי הצורך
+    encrypted_message = encrypt_message(key, data['message'])
+
     try:
-        data = request.json
-        message = data.get('message')
-        if not message:
-            return jsonify({"status": "error", "message": "Message is required"}), 400
-        encrypted_message = encrypt_message(message, encryption_key)
-        meshtastic_interface.sendData(encrypted_message)
-        return jsonify({"status": "message sent"}), 200
+        interface.sendText(encrypted_message)
+        return jsonify({'status': 'message sent'})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/get_messages', methods=['GET'])
 def get_messages():
-    return jsonify(received_messages), 200
+    # אתה צריך להוסיף את הקוד הנכון כדי לקבל הודעות ממכשירי ה-LoRa שלך
+    return jsonify([])
 
 @app.route('/get_locations', methods=['GET'])
 def get_locations():
-    return jsonify(locations), 200
+    # אתה צריך להוסיף את הקוד הנכון כדי לקבל את המיקומים של המכשירים ברשת
+    return jsonify([])
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(port=5000)
