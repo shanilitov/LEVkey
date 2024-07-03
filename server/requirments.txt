@@ -1,0 +1,4 @@
+Flask==2.0.3
+pyserial==3.5
+cryptography==3.4.8
+meshtastic==1.2.54
