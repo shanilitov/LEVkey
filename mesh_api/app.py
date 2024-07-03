@@ -1,34 +1,42 @@
 from flask import Flask, request, jsonify
 import serial
-import meshtastic
-from meshtastic.serial_interface import SerialInterface
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-import base64
+import meshtastic
+from meshtastic.serial_interface import SerialInterface
+import os
 
 app = Flask(__name__)
+
 interface = None
+encryption_key = os.urandom(32)  # Generate a random 256-bit encryption key
 
-def encrypt_message(key, plaintext):
-    cipher = Cipher(algorithms.AES(key), modes.CFB(b'16byteIV1234567'), backend=default_backend())
+
+def encrypt_message(message):
+    iv = os.urandom(16)  # Generate a random IV
+    cipher = Cipher(algorithms.AES(encryption_key), modes.CFB(iv), backend=default_backend())
     encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(plaintext.encode()) + encryptor.finalize()
-    return base64.b64encode(ciphertext).decode()
+    encrypted_message = iv + encryptor.update(message.encode()) + encryptor.finalize()
+    return encrypted_message
 
-def decrypt_message(key, ciphertext):
-    cipher = Cipher(algorithms.AES(key), modes.CFB(b'16byteIV1234567'), backend=default_backend())
+
+def decrypt_message(encrypted_message):
+    iv = encrypted_message[:16]
+    cipher = Cipher(algorithms.AES(encryption_key), modes.CFB(iv), backend=default_backend())
     decryptor = cipher.decryptor()
-    plaintext = decryptor.update(base64.b64decode(ciphertext)) + decryptor.finalize()
-    return plaintext.decode()
+    decrypted_message = decryptor.update(encrypted_message[16:]) + decryptor.finalize()
+    return decrypted_message.decode()
+
 
 @app.route('/connect', methods=['POST'])
 def connect():
     global interface
     try:
-        interface = SerialInterface('COM25')  # עדכן את השם של ה-serial port לפי המערכת שלך
-        return jsonify({'status': 'connected'})
+        interface = SerialInterface(devPath="COM25")
+        return jsonify({"status": "connected"}), 200
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/disconnect', methods=['POST'])
 def disconnect():
@@ -36,35 +44,57 @@ def disconnect():
     if interface:
         interface.close()
         interface = None
-        return jsonify({'status': 'disconnected'})
+        return jsonify({"status": "disconnected"}), 200
     else:
-        return jsonify({'status': 'error', 'message': 'Not connected'}), 500
+        return jsonify({"status": "error", "message": "No active connection"}), 400
+
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
     global interface
     if not interface:
-        return jsonify({'status': 'error', 'message': 'Not connected'}), 500
+        return jsonify({"status": "error", "message": "Not connected"}), 400
 
-    data = request.json
-    key = b'sixteen byte key'  # עדכן את המפתח לפי הצורך
-    encrypted_message = encrypt_message(key, data['message'])
+    data = request.get_json()
+    message = data.get("message")
+    if not message:
+        return jsonify({"status": "error", "message": "No message provided"}), 400
 
+    encrypted_message = encrypt_message(message)
     try:
-        interface.sendText(encrypted_message)
-        return jsonify({'status': 'message sent'})
+        interface.sendData(encrypted_message)
+        return jsonify({"status": "message sent"}), 200
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/get_messages', methods=['GET'])
 def get_messages():
-    # אתה צריך להוסיף את הקוד הנכון כדי לקבל הודעות ממכשירי ה-LoRa שלך
-    return jsonify([])
+    global interface
+    if not interface:
+        return jsonify({"status": "error", "message": "Not connected"}), 400
+
+    try:
+        messages = interface.getReceivedMessages()
+        decrypted_messages = [decrypt_message(msg) for msg in messages]
+        return jsonify({"messages": decrypted_messages}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/get_locations', methods=['GET'])
 def get_locations():
-    # אתה צריך להוסיף את הקוד הנכון כדי לקבל את המיקומים של המכשירים ברשת
-    return jsonify([])
+    global interface
+    if not interface:
+        return jsonify({"status": "error", "message": "Not connected"}), 400
+
+    try:
+        nodes = interface.nodes
+        locations = [{"id": node.id, "latitude": node.latitude, "longitude": node.longitude} for node in nodes.values()]
+        return jsonify({"locations": locations}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(port=5000)

@@ -1,40 +1,51 @@
-# Mesh Network API
+# Mesh Network Project
 
-This project provides an API for a mesh network using LoRa devices.
+This project is composed of two main parts:
+1. **Mesh Network API**: Provides the backend API for connecting, sending messages, receiving messages, and getting locations of devices in the mesh network.
+2. **Mesh Network UI**: Provides a user interface for chatting and displaying the location of devices in the mesh network.
 
-## Requirements
+## Structure
 
-- Python 3.7 or higher
-- pip
+- `mesh_api`: Contains the backend API.
+- `mesh_ui`: Contains the frontend UI.
 
 ## Setup
 
-1. Clone the repository:
+For detailed setup instructions, refer to the individual `README.md` files in each directory.
+
+### Mesh Network API
+
+See `mesh_api/README.md` for setup and usage instructions.
+
+### Mesh Network UI
+
+See `mesh_ui/README.md` for setup and usage instructions.
+
+## Branches
+
+To work with branches in this project:
+
+1. **Create a new branch**:
     ```bash
-    git clone <repository_url>
-    cd mesh_api
+    git checkout -b <branch_name>
     ```
 
-2. Install the required packages:
+2. **Switch to a branch**:
     ```bash
-    pip install -r requirements.txt
+    git checkout <branch_name>
     ```
 
-3. Run the API server:
+3. **Merge a branch**:
     ```bash
-    python app.py
+    git checkout main
+    git merge <branch_name>
     ```
 
-## API Endpoints
+4. **Delete a branch**:
+    ```bash
+    git branch -d <branch_name>
+    ```
 
-- `POST /connect`: Connect to the mesh network.
-- `POST /disconnect`: Disconnect from the mesh network.
-- `POST /send_message`: Send a message. Requires a JSON body with a `message` field.
-- `GET /get_messages`: Get all received messages.
-- `GET /get_locations`: Get the locations of all devices in the network.
+## Contributing
 
-## Tests
-
-Run the test script to ensure the API is working correctly:
-```bash
-python test_api.py
+To contribute to this project, please create a new branch for your changes and submit a pull request.
