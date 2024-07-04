@@ -6,6 +6,7 @@ import meshtastic
 from meshtastic.serial_interface import SerialInterface
 import logging
 from pubsub import pub
+from messages import decrypt_message, encrypt_message, load_key_table
 
 app = Flask(__name__)
 
@@ -14,7 +15,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 interface = None
 received_messages = []
-
+'''
 # יצירת טבלת מפתחות בגודל 1000
 key_table = [os.urandom(32) for _ in range(1000)]
 
@@ -37,17 +38,18 @@ def decrypt_message(encrypted_message):
     decryptor = cipher.decryptor()
     decrypted_message = decryptor.update(encrypted_message[18:]) + decryptor.finalize()
     return decrypted_message.decode()
-
+'''
 def on_receive(packet, interface):
-    global received_messages  # מצהירים על כך שנשתמש במשתנה received_messages הגלובלי
-
+    global received_messages
     try:
-        decrypted_message = decrypt_message(packet['raw'].decoded.payload)#packet.encodedPayload)
+        encrypted_payload = packet['raw'].decoded.payload
+        key_table = load_key_table()  # לוודא שטבלת המפתחות נטענת
+        decrypted_message = decrypt_message(encrypted_payload, key_table)
         logging.debug(f"Received and decrypted message: {decrypted_message}")
-        received_messages.append(decrypted_message)  # מוסיף לרשימה הגלובלית received_messages
-        # ניתן להוסיף פעולות נוספות כאן לאחר הוספת ההודעה לרשימה
+        received_messages.append(decrypted_message)
     except Exception as e:
         logging.error(f"Error handling received message: {e}")
+
 
 
 
@@ -105,15 +107,18 @@ def send_message():
         logging.error("No message provided in request")
         return jsonify({"status": "error", "message": "No message provided"}), 400
 
-    encrypted_message = encrypt_message(message)
-    logging.debug(f"Encrypted message: {encrypted_message}")
     try:
-        interface.sendText(str(message))
+        key_table = load_key_table()  # לוודא שטבלת המפתחות נטענת
+        encrypted_message = encrypt_message(message, key_table)
+        logging.debug(f"Encrypted message: {encrypted_message}")
+
+        interface.sendText(encrypted_message.hex())  # המרה למחרוזת הקסה
         logging.debug("Message sent to mesh network")
         return jsonify({"status": "message sent"}), 200
     except Exception as e:
         logging.error(f"Error sending message: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/get_messages', methods=['GET'])
 def get_messages():
