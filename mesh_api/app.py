@@ -5,6 +5,7 @@ from cryptography.hazmat.backends import default_backend
 import meshtastic
 from meshtastic.serial_interface import SerialInterface
 import logging
+from pubsub import pub
 
 app = Flask(__name__)
 
@@ -41,7 +42,7 @@ def on_receive(packet, interface):
     global received_messages  # מצהירים על כך שנשתמש במשתנה received_messages הגלובלי
 
     try:
-        decrypted_message = decrypt_message(packet.encodedPayload)
+        decrypted_message = decrypt_message(packet['raw'].decoded.payload)#packet.encodedPayload)
         logging.debug(f"Received and decrypted message: {decrypted_message}")
         received_messages.append(decrypted_message)  # מוסיף לרשימה הגלובלית received_messages
         # ניתן להוסיף פעולות נוספות כאן לאחר הוספת ההודעה לרשימה
@@ -55,8 +56,9 @@ def setup_meshtastic_listener():
     global interface
     try:
         interface = SerialInterface(devPath="COM26")  # לשנות לפי השם של החיבור הטורי המקומי...
-        interface.onReceive += on_receive  # הוספת האירוע של קבלת הודעה
-        interface.start()  # התחלת קריאה לממשק
+        # interface.gotResponse = on_receive  # הוספת האירוע של קבלת הודעה
+        # interface.start()  # התחלת קריאה לממשק
+        pub.subscribe(on_receive, "meshtastic.receive")
         logging.debug("Meshtastic interface setup successfully")
     except Exception as e:
         logging.error(f"Error setting up Meshtastic interface: {e}")
@@ -106,7 +108,7 @@ def send_message():
     encrypted_message = encrypt_message(message)
     logging.debug(f"Encrypted message: {encrypted_message}")
     try:
-        interface.sendData(encrypted_message)
+        interface.sendText(str(message))
         logging.debug("Message sent to mesh network")
         return jsonify({"status": "message sent"}), 200
     except Exception as e:
