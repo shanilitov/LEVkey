@@ -42,13 +42,19 @@ def decrypt_message(encrypted_message):
 def on_receive(packet, interface):
     global received_messages
     try:
-        encrypted_payload = packet['raw'].decoded.payload
-        key_table = load_key_table()  # לוודא שטבלת המפתחות נטענת
+        encrypted_payload = packet['decoded']['payload']
+
+        # המרה של ה-payload לגרסת בינארית במידה והיא מיוצגת כמחרוזת הקסה
+        if isinstance(encrypted_payload, str):
+            encrypted_payload = bytes.fromhex(encrypted_payload)
+
+        key_table = load_key_table()
         decrypted_message = decrypt_message(encrypted_payload, key_table)
         logging.debug(f"Received and decrypted message: {decrypted_message}")
-        received_messages.append(decrypted_message)
+        received_messages.append(decrypted_message.decode('utf-8', errors='ignore'))  # ננסה לפענח ל-UTF-8 אך נתעלם משגיאות
     except Exception as e:
         logging.error(f"Error handling received message: {e}")
+
 
 
 

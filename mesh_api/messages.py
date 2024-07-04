@@ -20,22 +20,22 @@ def load_key_table(filename="key_table.json"):
 
 # פונקצית הצפנה
 def encrypt_message(message, key_table):
-    # בחירת אינדקס מפתח אקראי
-    index = os.urandom(1)[0] % len(key_table)
-    key = key_table[index]
-    iv = os.urandom(16)  # וקטור אתחול (IV) אקראי
+    key_index = os.urandom(1)[0] % len(key_table)
+    key = key_table[key_index]
+    iv = os.urandom(16)
     cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
     encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(message.encode()) + encryptor.finalize()
-    return f"{index:04d}".encode() + iv + ciphertext
+    encrypted_message = iv + encryptor.update(message.encode()) + encryptor.finalize()
+    return key_index.to_bytes(2, byteorder='big') + encrypted_message
+
 
 # פונקצית פענוח
 def decrypt_message(encrypted_message, key_table):
-    index = int(encrypted_message[:4].decode())
-    key = key_table[index]
-    iv = encrypted_message[4:20]
-    ciphertext = encrypted_message[20:]
+    key_index = int.from_bytes(encrypted_message[:2], byteorder='big')
+    key = key_table[key_index]
+    iv = encrypted_message[2:18]
     cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
     decryptor = cipher.decryptor()
-    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
-    return plaintext.decode()
+    decrypted_message = decryptor.update(encrypted_message[18:]) + decryptor.finalize()
+    return decrypted_message  # נשאיר את ההודעה כמחרוזת בינרית
+
