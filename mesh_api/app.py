@@ -1,42 +1,80 @@
 from flask import Flask, request, jsonify
-import serial
+import os
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import meshtastic
 from meshtastic.serial_interface import SerialInterface
-import os
+import logging
 
 app = Flask(__name__)
 
-interface = None
-encryption_key = os.urandom(32)  # Generate a random 256-bit encryption key
+# הגדרת רמת הלוגים ל-Debug כדי לראות את כל ההודעות
+logging.basicConfig(level=logging.DEBUG)
 
+interface = None
+received_messages = []
+
+# יצירת טבלת מפתחות בגודל 1000
+key_table = [os.urandom(32) for _ in range(1000)]
 
 def encrypt_message(message):
+    # בחירת מפתח רנדומלי מהטבלה
+    key_index = os.urandom(1)[0] % 1000
+    key = key_table[key_index]
     iv = os.urandom(16)  # Generate a random IV
-    cipher = Cipher(algorithms.AES(encryption_key), modes.CFB(iv), backend=default_backend())
+    cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
     encryptor = cipher.encryptor()
     encrypted_message = iv + encryptor.update(message.encode()) + encryptor.finalize()
-    return encrypted_message
-
+    # הוספת אינדקס המפתח המוצפן בתחילת ההודעה
+    return key_index.to_bytes(2, byteorder='big') + encrypted_message
 
 def decrypt_message(encrypted_message):
-    iv = encrypted_message[:16]
-    cipher = Cipher(algorithms.AES(encryption_key), modes.CFB(iv), backend=default_backend())
+    key_index = int.from_bytes(encrypted_message[:2], byteorder='big')
+    key = key_table[key_index]
+    iv = encrypted_message[2:18]
+    cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
     decryptor = cipher.decryptor()
-    decrypted_message = decryptor.update(encrypted_message[16:]) + decryptor.finalize()
+    decrypted_message = decryptor.update(encrypted_message[18:]) + decryptor.finalize()
     return decrypted_message.decode()
 
+def on_receive(packet, interface):
+    global received_messages  # מצהירים על כך שנשתמש במשתנה received_messages הגלובלי
+
+    try:
+        decrypted_message = decrypt_message(packet.encodedPayload)
+        logging.debug(f"Received and decrypted message: {decrypted_message}")
+        received_messages.append(decrypted_message)  # מוסיף לרשימה הגלובלית received_messages
+        # ניתן להוסיף פעולות נוספות כאן לאחר הוספת ההודעה לרשימה
+    except Exception as e:
+        logging.error(f"Error handling received message: {e}")
+
+
+
+# הרשמה לאירוע שמאזין להודעות שמגיעות מהרדיו
+def setup_meshtastic_listener():
+    global interface
+    try:
+        interface = SerialInterface(devPath="COM26")  # לשנות לפי השם של החיבור הטורי המקומי...
+        interface.onReceive += on_receive  # הוספת האירוע של קבלת הודעה
+        interface.start()  # התחלת קריאה לממשק
+        logging.debug("Meshtastic interface setup successfully")
+    except Exception as e:
+        logging.error(f"Error setting up Meshtastic interface: {e}")
+
+# קריאה לפונקציה להתחלת הממשק
+setup_meshtastic_listener()
 
 @app.route('/connect', methods=['POST'])
 def connect():
     global interface
     try:
-        interface = SerialInterface(devPath="COM26")  # לשנות לפי השם של החיבור הטורי המקומי...
+        if not interface:
+            setup_meshtastic_listener()  # אם אין חיבור קיים, התחל מחדש את הממשק
+        logging.debug("Connected to mesh network")
         return jsonify({"status": "connected"}), 200
     except Exception as e:
+        logging.error(f"Error connecting to mesh network: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @app.route('/disconnect', methods=['POST'])
 def disconnect():
@@ -44,57 +82,57 @@ def disconnect():
     if interface:
         interface.close()
         interface = None
+        logging.debug("Disconnected from mesh network")
         return jsonify({"status": "disconnected"}), 200
     else:
+        logging.error("No active connection to disconnect")
         return jsonify({"status": "error", "message": "No active connection"}), 400
-
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
     global interface
     if not interface:
+        logging.error("Not connected to mesh network")
         return jsonify({"status": "error", "message": "Not connected"}), 400
 
     data = request.get_json()
+    logging.debug(f"Received POST request to /send_message with data: {data}")
+
     message = data.get("message")
     if not message:
+        logging.error("No message provided in request")
         return jsonify({"status": "error", "message": "No message provided"}), 400
 
     encrypted_message = encrypt_message(message)
+    logging.debug(f"Encrypted message: {encrypted_message}")
     try:
         interface.sendData(encrypted_message)
+        logging.debug("Message sent to mesh network")
         return jsonify({"status": "message sent"}), 200
     except Exception as e:
+        logging.error(f"Error sending message: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 @app.route('/get_messages', methods=['GET'])
 def get_messages():
-    global interface
-    if not interface:
-        return jsonify({"status": "error", "message": "Not connected"}), 400
-
-    try:
-        messages = interface.getReceivedMessages()
-        decrypted_messages = [decrypt_message(msg) for msg in messages]
-        return jsonify({"messages": decrypted_messages}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
+    global received_messages
+    return jsonify({"messages": received_messages}), 200
 
 @app.route('/get_locations', methods=['GET'])
 def get_locations():
     global interface
     if not interface:
+        logging.error("Not connected to mesh network")
         return jsonify({"status": "error", "message": "Not connected"}), 400
 
     try:
         nodes = interface.nodes
         locations = [{"id": node.id, "latitude": node.latitude, "longitude": node.longitude} for node in nodes.values()]
+        logging.debug(f"Retrieved node locations: {locations}")
         return jsonify({"locations": locations}), 200
     except Exception as e:
+        logging.error(f"Error getting locations: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 if __name__ == '__main__':
     app.run(port=5000)
