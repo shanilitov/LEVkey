@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 
 const ChatComponent = () => {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(["הי", "אני חוזר עכשיו לבסיס"]);
 
   const sendMessage = async () => {
+    setMessages([...messages, message])
     try {
       const response = await fetch('http://127.0.0.1:5000/send_message', {
         method: 'POST',
@@ -15,7 +16,6 @@ const ChatComponent = () => {
           message: message,
         }),
       });
-
       if (response.ok) {
         console.log('Message sent successfully');
         setMessage(''); // Reset message input after sending
@@ -26,13 +26,16 @@ const ChatComponent = () => {
     } catch (error) {
       console.error('Error:', error);
     }
+    setMessage(''); // Reset message input after sending
   };
 
   const fetchMessages = async () => {
+    console.log('on fetch messages')
     try {
       const response = await fetch('http://127.0.0.1:5000/get_messages');
       if (response.ok) {
         const data = await response.json();
+        console.log(`data: ${data}`)
         setMessages(data);
       } else {
         console.error('Failed to fetch messages');
@@ -53,12 +56,12 @@ const ChatComponent = () => {
       </div>
       <div className="p-6 space-y-4 max-h-96 overflow-y-auto">
         {messages.map((msg, index) => (
-          <div key={msg.id} className="flex items-start">
+          <div key={index} className="flex items-start">
             <div className="w-10 h-10 rounded-full bg-gray-600 flex-shrink-0">
               <span className="text-white text-lg font-bold">{index % 2 === 0 ? '#' : '&'}</span>
             </div>
             <div className="ml-4 bg-gray-800 text-green-500 rounded-lg p-4 shadow">
-              <p>{msg.text}</p>
+              <p>{msg}</p>
             </div>
           </div>
         ))}

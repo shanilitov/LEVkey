@@ -129,10 +129,12 @@ def send_message():
 @app.route('/get_messages', methods=['GET'])
 def get_messages():
     global received_messages
-    return jsonify({"messages": received_messages}), 200
+    # return jsonify({"messages": received_messages}), 200
+    return ["Hi", "It's working"]
 
 @app.route('/get_locations', methods=['GET'])
 def get_locations():
+    return [(33.2733, 35.2038), (33.1217, 35.4821), (33.305, 35.5717)]
     global interface
     if not interface:
         logging.error("Not connected to mesh network")
