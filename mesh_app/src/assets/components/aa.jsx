@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const ChatComponent = () => {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState(["הי", "אני חוזר עכשיו לבסיס"]);
+  const [messages, setMessages] = useState([""]);
 
   const sendMessage = async () => {
     setMessages([...messages, message])

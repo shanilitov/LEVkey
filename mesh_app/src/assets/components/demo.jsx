@@ -1,11 +1,40 @@
 import React, { useState, useEffect } from 'react';
 
-const ChatComponent = () => {
+const Demo = () => {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState(["הי", "אני חוזר עכשיו לבסיס"]);
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    // טען הודעות מ-Local Storage כאשר הקומפוננטה נטענת לראשונה
+    const savedMessages = JSON.parse(localStorage.getItem('messages')) || [];
+    setMessages(savedMessages);
+
+
+    // הוסף מאזין לשינויים ב-Local Storage
+    const handleStorageChange = () => {
+      // delayS();
+      const updatedMessages = JSON.parse(localStorage.getItem('messages')) || [];
+      setMessages(updatedMessages);
+    };
+    // function delayS(){
+    //   for (let i = 0; i < 5000000; i++) {
+    //      j = 7 * i;
+    //   }
+
+    // }
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // נקה את המאזין כאשר הקומפוננטה מפורקת
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   const sendMessage = async () => {
-    setMessages([...messages, message])
+    const newMessages = [...messages, message];
+    setMessages(newMessages);
+    localStorage.setItem('messages', JSON.stringify(newMessages));
     try {
       const response = await fetch('http://127.0.0.1:5000/send_message', {
         method: 'POST',
@@ -30,13 +59,14 @@ const ChatComponent = () => {
   };
 
   const fetchMessages = async () => {
-    console.log('on fetch messages')
+    console.log('on fetch messages');
     try {
       const response = await fetch('http://127.0.0.1:5000/get_messages');
       if (response.ok) {
         const data = await response.json();
-        console.log(`data: ${data}`)
+        console.log(`data: ${data}`);
         setMessages(data);
+        localStorage.setItem('messages', JSON.stringify(data));
       } else {
         console.error('Failed to fetch messages');
       }
@@ -44,10 +74,6 @@ const ChatComponent = () => {
       console.error('Error:', error);
     }
   };
-
-  useEffect(() => {
-   // fetchMessages(); // Fetch messages when component mounts
-  }, []);
 
   return (
     <div className="shadow-lg rounded-lg overflow-hidden">
@@ -75,7 +101,7 @@ const ChatComponent = () => {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />
-          <button 
+          <button
             className="ml-4 bg-green-500 text-white px-4 py-2 rounded-lg flex items-center"
             onClick={sendMessage}
           >
@@ -87,4 +113,4 @@ const ChatComponent = () => {
   );
 };
 
-export default ChatComponent;
+export default Demo;
